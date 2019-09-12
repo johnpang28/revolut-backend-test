@@ -12,6 +12,8 @@ import com.revolut.transfer.dao.Account
 import com.revolut.transfer.dao.Accounts
 import com.revolut.transfer.dao.Transfer
 import com.revolut.transfer.dao.Transfers
+import io.mockk.every
+import io.mockk.mockk
 import org.assertj.core.api.Assertions.assertThat
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils
@@ -24,9 +26,10 @@ import org.junit.jupiter.api.TestInstance.Lifecycle.PER_CLASS
 import java.util.*
 
 @TestInstance(PER_CLASS)
-internal class TransferServiceTest {
+internal class DefaultTransferServiceTest {
 
-    private val transferService = DefaultTransferService()
+    private val idGenerator = mockk<IdGenerator<String>>()
+    private val transferService = DefaultTransferService(idGenerator)
 
     @BeforeAll
     fun dbSetup() {
@@ -47,11 +50,14 @@ internal class TransferServiceTest {
             )
         }
 
+        val transferId = "c96e7696-73b8-4ac3-ba41-5120966fe4fb"
+        every { idGenerator.nextId() } returns transferId
+
         val amount = 1.23
         val transferRequest = TransferRequest("request-1", account1.id.value, account2.id.value, "GBP", amount.toBigDecimal())
         val result = transferService.doTransfer(transferRequest)
 
-        assertThat(result).isEqualTo(SuccessfulTransfer.right())
+        assertThat(result).isEqualTo(SuccessfulTransfer(transferId).right())
 
         transaction {
             assertThat(Account.findById(account1.id)!!.balance).isEqualTo(755.22)
@@ -76,11 +82,14 @@ internal class TransferServiceTest {
             )
         }
 
+        val transferId = "e54fbb25-c482-479d-b97d-a7f4d5ec6158"
+        every { idGenerator.nextId() } returns transferId
+
         val amount = 20.00
         val transferRequest = TransferRequest("request-2", account1.id.value, account2.id.value, "GBP", amount.toBigDecimal())
         val result = transferService.doTransfer(transferRequest)
 
-        assertThat(result).isEqualTo(InsufficientFunds.right())
+        assertThat(result).isEqualTo(InsufficientFunds(transferId).right())
 
         transaction {
             assertThat(Account.findById(account1.id)!!.balance).isEqualTo(10.00)
@@ -177,13 +186,17 @@ internal class TransferServiceTest {
             )
         }
 
+        val transferId = "ffd63caa-b755-4c8c-8354-0e32b6f7a76a"
+        every { idGenerator.nextId() } returns transferId
+
         val transferRequest = TransferRequest("request-7", account1.id.value, account2.id.value, "GBP", 50.00.toBigDecimal())
         val result1 = transferService.doTransfer(transferRequest)
-        assertThat(result1).isEqualTo(SuccessfulTransfer.right())
+        val expectedResponse = SuccessfulTransfer(transferId).right()
+        assertThat(result1).isEqualTo(expectedResponse)
 
         // do the same transfer again (same requestId)
         val result2 = transferService.doTransfer(transferRequest)
-        assertThat(result2).isEqualTo(SuccessfulTransfer.right())
+        assertThat(result2).isEqualTo(expectedResponse)
 
         transaction {
             assertThat(Account.findById(account1.id)!!.balance).isEqualTo(950.00)
@@ -201,9 +214,12 @@ internal class TransferServiceTest {
             )
         }
 
+        val transferId = "4be7da76-5ae3-46d2-828b-c505cc2853f2"
+        every { idGenerator.nextId() } returns transferId
+
         val transferRequest1 = TransferRequest("request-8", account1.id.value, account2.id.value, "GBP", 50.00.toBigDecimal())
         val result1 = transferService.doTransfer(transferRequest1)
-        assertThat(result1).isEqualTo(SuccessfulTransfer.right())
+        assertThat(result1).isEqualTo(SuccessfulTransfer(transferId).right())
 
         val transferRequest2 = TransferRequest("request-8", account1.id.value, account2.id.value, "GBP", 75.00.toBigDecimal()) // same request ID, different amount
         val result2 = transferService.doTransfer(transferRequest2)

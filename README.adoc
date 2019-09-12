@@ -1,0 +1,29 @@
+== Compile and test
+```
+./mvnw clean test
+```
+
+
+== Running the application
+
+Run the following command to start the application
+```
+./mvnw exec:java
+```
+This application will be available on port `8080`
+
+== Seed Data
+
+When the application starts up, the database will be seeded with 2 accounts, each with a balance of 10,000.00 GBP.
+
+- Account ID 1: `08d9f37f-b8cf-4eb1-abd0-ddf8e90d7c07`
+- Account ID 2: `3de7684e-aaa0-473d-982a-a9606d1741aa`
+
+== Example curl request for a transfer:
+
+```
+curl http://localhost:8080/transfer \
+  -d '{"requestId": "request-001", "sourceAccountId": "08d9f37f-b8cf-4eb1-abd0-ddf8e90d7c07", "targetAccountId": "3de7684e-aaa0-473d-982a-a9606d1741aa", "currency": "GBP", "amount": 343.01}'
+```
+
+The `requestId` property is a client supplied unique ID for the transfer.

@@ -14,13 +14,12 @@ import org.jetbrains.exposed.dao.EntityID
 import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.joda.time.DateTime
-import java.util.*
 
 interface TransferService {
     fun doTransfer(request: TransferRequest): Either<TransferError, TransferResult>
 }
 
-class DefaultTransferService : TransferService {
+class DefaultTransferService(private val idGenerator: IdGenerator<String>) : TransferService {
 
     override fun doTransfer(request: TransferRequest): Either<TransferError, TransferResult> {
         return transaction {
@@ -34,20 +33,27 @@ class DefaultTransferService : TransferService {
                         ?: (Transfer.find { Transfers.requestId eq request.requestId }.firstOrNull()?.let { existingTransfer ->
 
                             // If there is already a transfer with the same request ID, and the request details are the same,
-                            // do nothing and return success (for idempotency)
-                            if (isSameTransfer(request, existingTransfer)) SuccessfulTransfer.right()
+                            // do nothing and return same response as previous request (for idempotency)
+                            if (isSameTransfer(request, existingTransfer)) when (existingTransfer.state) {
+                                DECLINED.name ->  InsufficientFunds(existingTransfer.id.value).right()
+                                else -> SuccessfulTransfer(existingTransfer.id.value).right()
+                            }
+
                             else DuplicateRequestId.left()
                         } ?: run {
 
-                            // Check there are sufficent funds. If not, persist the transfer with state of DECLINED
+                            // Check there are sufficient funds. If not, persist the transfer with state of DECLINED
                             if (request.amount.compareTo(sourceAcc.balance.toBigDecimal()) > 0) {
-                                request.persist(DECLINED)
-                                InsufficientFunds.right()
+                                val transfer = request.persist(DECLINED)
+                                InsufficientFunds(transfer.id.value).right()
                             } else {
+                                val now = DateTime.now()
                                 sourceAcc.balance = sourceAcc.balance.toBigDecimal().minus(request.amount).toDouble()
+                                sourceAcc.updatedAt = now
                                 targetAcc.balance = targetAcc.balance.toBigDecimal().plus(request.amount).toDouble()
-                                request.persist(COMPLETED)
-                                SuccessfulTransfer.right()
+                                targetAcc.updatedAt = now
+                                val transfer = request.persist(COMPLETED)
+                                SuccessfulTransfer(transfer.id.value).right()
                             }
                         })
                 } ?: TargetAccountNotFoundError.left()
@@ -68,13 +74,13 @@ class DefaultTransferService : TransferService {
             sourceAccountId == transfer.sourceAccount.value
                     && targetAccountId == transfer.targetAccount.value
                     && currency == transfer.currency
-                    && amount == transfer.amount.toBigDecimal()
+                    && amount.compareTo(transfer.amount.toBigDecimal()) == 0
         }
     }
 
-    private fun TransferRequest.persist(state: TransferState) {
+    private fun TransferRequest.persist(state: TransferState): Transfer {
         val request = this
-        Transfer.new(UUID.randomUUID().toString()) {
+        return Transfer.new(idGenerator.nextId()) {
             requestId = request.requestId
             sourceAccount =  EntityID(request.sourceAccountId, Accounts)
             targetAccount = EntityID(request.targetAccountId, Accounts)
