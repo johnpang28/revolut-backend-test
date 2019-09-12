@@ -1,8 +1,14 @@
+= Revolut Transfer Application
+
+This application is written in *Kotlin* and makes use of the following libraries:
+
+    * Exposed
+    * http4k
+
 == Compile and test
 ```
 ./mvnw clean test
 ```
-
 
 == Running the application
 
